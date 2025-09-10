@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Unir PDFs{% endblock %}
+{% block content %}
+<div class="card shadow p-5">
+  <h2>📑 Unir PDFs</h2>
+  <form method="post" enctype="multipart/form-data">
+    <input type="file" name="archivos" class="form-control my-3" multiple required>
+    <button type="submit" class="btn btn-success">Unir</button>
+  </form>
+</div>
+{% endblock %}
