@@ -1,3 +1,6 @@
+/* ----------------------- */
+/* ESTILOS GENERALES        */
+/* ----------------------- */
 html, body {
   height: 100%;
   margin: 0;
@@ -8,11 +11,90 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  background-color: #f8f9fa;
 }
 
-/* Footer */
+/* Contenedor principal ocupa todo el espacio disponible */
+.container {
+  flex: 1;
+}
+
+/* ----------------------- */
+/* LISTA ORDENABLE VERDE    */
+/* ----------------------- */
+#listaArchivos {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.draggable {
+  cursor: grab;
+  background-color: #d1fae5;  /* verde claro de fondo */
+  border: 1px solid #14532d;   /* verde oscuro del borde */
+  border-radius: 6px;
+  margin-bottom: 8px;
+  padding: 10px 15px;
+  font-weight: 500;
+  color: #14532d;               /* texto verde oscuro */
+  transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease, opacity 0.4s ease;
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+/* Fade-in al cargar */
+.draggable.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Al arrastrar */
+.draggable.dragging {
+  opacity: 0.7;
+  background-color: #a7f3d0;   /* verde más intenso al arrastrar */
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  transform: scale(1.05);
+  z-index: 1000;
+}
+
+/* Animación al soltar */
+.draggable.drop-animate {
+  animation: dropEffect 0.2s ease;
+}
+
+@keyframes dropEffect {
+  0% { transform: scale(1.05); }
+  50% { transform: scale(0.98); }
+  100% { transform: scale(1); }
+}
+
+/* ----------------------- */
+/* FOOTER                  */
+/* ----------------------- */
 .footer {
   background-color: #14532d; /* Verde oscuro */
   border-top: 4px solid #facc15; /* Amarillo */
+  padding: 10px 0;
+  color: white;
+  text-align: center;
   margin-top: auto;
+}
+
+.footer img {
+  margin-right: 8px;
+}
+
+/* ----------------------- */
+/* FONDOS POR SECCIÓN       */
+/* ----------------------- */
+.bg-convertir {
+  background-color: #f0fff4;
+}
+
+.bg-unir {
+  background-color: #e6f4ea;
+}
+
+.bg-dividir {
+  background-color: #d1f7e5;
 }
