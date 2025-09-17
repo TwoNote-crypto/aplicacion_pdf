@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request
 import os
 from werkzeug.utils import secure_filename
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
@@ -30,22 +30,25 @@ def index():
 @app.route("/convertir", methods=["GET", "POST"])
 def convertir():
     if request.method == "POST":
-        archivo = request.files["archivo"]
-        if archivo:
-            nombre = secure_filename(archivo.filename)
-            ruta_imagen = os.path.join(UPLOAD_FOLDER, nombre)
-            archivo.save(ruta_imagen)
+        archivos = request.files.getlist("archivos")
+        orden = request.form.get("orden").split(",") if request.form.get("orden") else []
 
-            # Crear PDF desde imagen
-            imagen = Image.open(ruta_imagen)
+        if archivos:
+            # Crear PDF desde las imágenes en el orden definido
+            archivos_dict = {archivo.filename: archivo for archivo in archivos}
             nombre_pdf = "convertido.pdf"
             ruta_pdf = os.path.join(RESULTADOS_FOLDER, nombre_pdf)
-            imagen.convert("RGB").save(ruta_pdf)
 
-            # Agregar marca de agua
-            ruta_final = agregar_marca_agua(ruta_pdf, "convertido_final.pdf")
+            # Abrir imágenes en orden
+            imagenes = [Image.open(archivos_dict[nombre]) for nombre in orden if nombre in archivos_dict]
+            if imagenes:
+                imagenes[0].convert("RGB").save(
+                    ruta_pdf, save_all=True, append_images=imagenes[1:]
+                )
 
-            return render_template("preview.html", archivo=os.path.basename(ruta_final))
+                # Agregar marca de agua
+                ruta_final = agregar_marca_agua(ruta_pdf, "convertido_final.pdf")
+                return render_template("preview.html", archivo=os.path.basename(ruta_final))
     return render_template("convertir.html")
 
 # ----------------------------
@@ -55,20 +58,21 @@ def convertir():
 def unir():
     if request.method == "POST":
         archivos = request.files.getlist("archivos")
+        orden = request.form.get("orden").split(",") if request.form.get("orden") else []
+
         if archivos:
             merger = PdfMerger()
-            for archivo in archivos:
-                if archivo and archivo.filename.endswith(".pdf"):
-                    merger.append(archivo)
+            archivos_dict = {archivo.filename: archivo for archivo in archivos}
+            for nombre in orden:
+                if nombre in archivos_dict:
+                    merger.append(archivos_dict[nombre])
 
             nombre_pdf = "unido.pdf"
             ruta_pdf = os.path.join(RESULTADOS_FOLDER, nombre_pdf)
             merger.write(ruta_pdf)
             merger.close()
 
-            # Agregar marca de agua
             ruta_final = agregar_marca_agua(ruta_pdf, "unido_final.pdf")
-
             return render_template("preview.html", archivo=os.path.basename(ruta_final))
     return render_template("unir.html")
 
@@ -79,7 +83,7 @@ def unir():
 def dividir():
     if request.method == "POST":
         archivo = request.files["archivo"]
-        paginas = request.form.get("paginas")  # Ej: "1,3-5"
+        paginas = request.form.get("paginas")
 
         if archivo and archivo.filename.endswith(".pdf"):
             nombre = secure_filename(archivo.filename)
@@ -89,7 +93,6 @@ def dividir():
             reader = PdfReader(ruta_pdf)
             writer = PdfWriter()
 
-            # Procesar páginas solicitadas
             paginas_seleccionadas = []
             for parte in paginas.split(","):
                 if "-" in parte:
@@ -107,9 +110,7 @@ def dividir():
             with open(ruta_pdf, "wb") as salida:
                 writer.write(salida)
 
-            # Agregar marca de agua
             ruta_final = agregar_marca_agua(ruta_pdf, "dividido_final.pdf")
-
             return render_template("preview.html", archivo=os.path.basename(ruta_final))
     return render_template("dividir.html")
 
@@ -117,7 +118,6 @@ def dividir():
 # FUNCIÓN MARCA DE AGUA
 # ----------------------------
 def agregar_marca_agua(ruta_pdf, nombre_salida):
-    """Agrega una marca de agua de texto al PDF"""
     ruta_temp = os.path.join(RESULTADOS_FOLDER, "temp.pdf")
     c = canvas.Canvas(ruta_temp, pagesize=A4)
     ancho, alto = A4
@@ -125,7 +125,6 @@ def agregar_marca_agua(ruta_pdf, nombre_salida):
     c.drawString(200, 20, "Creado por Gestión Documental")
     c.save()
 
-    # Fusionar con el PDF original
     reader = PdfReader(ruta_pdf)
     marca = PdfReader(ruta_temp)
     writer = PdfWriter()
