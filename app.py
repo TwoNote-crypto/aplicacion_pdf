@@ -2,145 +2,141 @@ from flask import Flask, render_template, request
 import os
 from werkzeug.utils import secure_filename
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
 from PIL import Image
 
-# ----------------------------
-# CONFIGURACIÓN
-# ----------------------------
 app = Flask(__name__)
-UPLOAD_FOLDER = "static/uploads"
-RESULTADOS_FOLDER = "static/resultados"
-LOGO_PATH = "static/logo.png"
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Carpeta para guardar resultados
+RESULTADOS_FOLDER = os.path.join("static", "resultados")
 os.makedirs(RESULTADOS_FOLDER, exist_ok=True)
 
-# ----------------------------
-# RUTA PRINCIPAL
-# ----------------------------
+# -----------------------------
+# Función auxiliar para nombres
+# -----------------------------
+def obtener_nombre(nombre_personalizado, archivos, prefijo="resultado"):
+    """
+    Si el usuario da un nombre, lo usamos.
+    Si no, usamos el nombre del primer archivo subido.
+    """
+    if nombre_personalizado and nombre_personalizado.strip() != "":
+        nombre_final = nombre_personalizado.strip()
+    else:
+        nombre_final = os.path.splitext(archivos[0].filename)[0] if archivos else prefijo
+    if not nombre_final.lower().endswith(".pdf"):
+        nombre_final += ".pdf"
+    return secure_filename(nombre_final)
+
+# -----------------------------
+# Rutas principales
+# -----------------------------
 @app.route("/")
 def index():
     return render_template("index.html")
 
-# ----------------------------
-# CONVERTIR IMAGEN A PDF
-# ----------------------------
+# -----------------------------
+# Convertir imágenes a PDF
+# -----------------------------
 @app.route("/convertir", methods=["GET", "POST"])
 def convertir():
     if request.method == "POST":
         archivos = request.files.getlist("archivos")
-        orden = request.form.get("orden").split(",") if request.form.get("orden") else []
+        orden = request.form.get("orden", "")
+        nombre_pdf = request.form.get("nombre_pdf", "")
 
-        if archivos:
-            # Crear PDF desde las imágenes en el orden definido
-            archivos_dict = {archivo.filename: archivo for archivo in archivos}
-            nombre_pdf = "convertido.pdf"
-            ruta_pdf = os.path.join(RESULTADOS_FOLDER, nombre_pdf)
+        # Reordenar según la lista
+        if orden:
+            orden_lista = orden.split(",")
+            archivos_dict = {f.filename: f for f in archivos}
+            archivos = [archivos_dict[n] for n in orden_lista if n in archivos_dict]
 
-            # Abrir imágenes en orden
-            imagenes = [Image.open(archivos_dict[nombre]) for nombre in orden if nombre in archivos_dict]
-            if imagenes:
-                imagenes[0].convert("RGB").save(
-                    ruta_pdf, save_all=True, append_images=imagenes[1:]
-                )
+        imagenes = []
+        for archivo in archivos:
+            if archivo and archivo.filename.lower().endswith(("png", "jpg", "jpeg")):
+                img = Image.open(archivo).convert("RGB")
+                imagenes.append(img)
 
-                # Agregar marca de agua
-                ruta_final = agregar_marca_agua(ruta_pdf, "convertido_final.pdf")
-                return render_template("preview.html", archivo=os.path.basename(ruta_final))
+        if not imagenes:
+            return "No se subieron imágenes válidas", 400
+
+        nombre_final = obtener_nombre(nombre_pdf, archivos, "convertido")
+        ruta_salida = os.path.join(RESULTADOS_FOLDER, nombre_final)
+
+        imagenes[0].save(ruta_salida, save_all=True, append_images=imagenes[1:])
+
+        return render_template("resultado.html", archivo=nombre_final)
+
     return render_template("convertir.html")
 
-# ----------------------------
-# UNIR PDFs
-# ----------------------------
+# -----------------------------
+# Unir PDFs
+# -----------------------------
 @app.route("/unir", methods=["GET", "POST"])
 def unir():
     if request.method == "POST":
         archivos = request.files.getlist("archivos")
-        orden = request.form.get("orden").split(",") if request.form.get("orden") else []
+        orden = request.form.get("orden", "")
+        nombre_pdf = request.form.get("nombre_pdf", "")
 
-        if archivos:
-            merger = PdfMerger()
-            archivos_dict = {archivo.filename: archivo for archivo in archivos}
-            for nombre in orden:
-                if nombre in archivos_dict:
-                    merger.append(archivos_dict[nombre])
+        # Reordenar según la lista
+        if orden:
+            orden_lista = orden.split(",")
+            archivos_dict = {f.filename: f for f in archivos}
+            archivos = [archivos_dict[n] for n in orden_lista if n in archivos_dict]
 
-            nombre_pdf = "unido.pdf"
-            ruta_pdf = os.path.join(RESULTADOS_FOLDER, nombre_pdf)
-            merger.write(ruta_pdf)
-            merger.close()
+        if not archivos:
+            return "No se subieron PDFs válidos", 400
 
-            ruta_final = agregar_marca_agua(ruta_pdf, "unido_final.pdf")
-            return render_template("preview.html", archivo=os.path.basename(ruta_final))
+        nombre_final = obtener_nombre(nombre_pdf, archivos, "unido")
+        ruta_salida = os.path.join(RESULTADOS_FOLDER, nombre_final)
+
+        merger = PdfMerger()
+        for archivo in archivos:
+            merger.append(archivo)
+        merger.write(ruta_salida)
+        merger.close()
+
+        return render_template("resultado.html", archivo=nombre_final)
+
     return render_template("unir.html")
 
-# ----------------------------
-# DIVIDIR PDF
-# ----------------------------
+# -----------------------------
+# Dividir PDF
+# -----------------------------
 @app.route("/dividir", methods=["GET", "POST"])
 def dividir():
     if request.method == "POST":
-        archivo = request.files["archivo"]
+        archivo = request.files.get("archivo")
         paginas = request.form.get("paginas")
+        nombre_pdf = request.form.get("nombre_pdf", "")
 
-        if archivo and archivo.filename.endswith(".pdf"):
-            nombre = secure_filename(archivo.filename)
-            ruta_pdf = os.path.join(UPLOAD_FOLDER, nombre)
-            archivo.save(ruta_pdf)
+        if not archivo or not paginas:
+            return "Falta archivo o rango de páginas", 400
 
-            reader = PdfReader(ruta_pdf)
-            writer = PdfWriter()
+        nombre_final = obtener_nombre(nombre_pdf, [archivo], "dividido")
+        ruta_salida = os.path.join(RESULTADOS_FOLDER, nombre_final)
 
-            paginas_seleccionadas = []
-            for parte in paginas.split(","):
-                if "-" in parte:
-                    inicio, fin = parte.split("-")
-                    paginas_seleccionadas.extend(range(int(inicio)-1, int(fin)))
-                else:
-                    paginas_seleccionadas.append(int(parte)-1)
+        reader = PdfReader(archivo)
+        writer = PdfWriter()
 
-            for num in paginas_seleccionadas:
-                if 0 <= num < len(reader.pages):
-                    writer.add_page(reader.pages[num])
+        rangos = []
+        for parte in paginas.split(","):
+            if "-" in parte:
+                inicio, fin = map(int, parte.split("-"))
+                rangos.extend(range(inicio, fin + 1))
+            else:
+                rangos.append(int(parte))
 
-            nombre_pdf = "dividido.pdf"
-            ruta_pdf = os.path.join(RESULTADOS_FOLDER, nombre_pdf)
-            with open(ruta_pdf, "wb") as salida:
-                writer.write(salida)
+        for num in rangos:
+            if 1 <= num <= len(reader.pages):
+                writer.add_page(reader.pages[num - 1])
 
-            ruta_final = agregar_marca_agua(ruta_pdf, "dividido_final.pdf")
-            return render_template("preview.html", archivo=os.path.basename(ruta_final))
+        with open(ruta_salida, "wb") as salida:
+            writer.write(salida)
+
+        return render_template("resultado.html", archivo=nombre_final)
+
     return render_template("dividir.html")
 
-# ----------------------------
-# FUNCIÓN MARCA DE AGUA
-# ----------------------------
-def agregar_marca_agua(ruta_pdf, nombre_salida):
-    ruta_temp = os.path.join(RESULTADOS_FOLDER, "temp.pdf")
-    c = canvas.Canvas(ruta_temp, pagesize=A4)
-    ancho, alto = A4
-    c.setFont("Helvetica", 10)
-    c.drawString(200, 20, "Creado por Gestión Documental")
-    c.save()
 
-    reader = PdfReader(ruta_pdf)
-    marca = PdfReader(ruta_temp)
-    writer = PdfWriter()
-
-    for pagina in reader.pages:
-        pagina.merge_page(marca.pages[0])
-        writer.add_page(pagina)
-
-    ruta_final = os.path.join(RESULTADOS_FOLDER, nombre_salida)
-    with open(ruta_final, "wb") as salida:
-        writer.write(salida)
-
-    return ruta_final
-
-# ----------------------------
-# EJECUCIÓN
-# ----------------------------
 if __name__ == "__main__":
     app.run(debug=True)
