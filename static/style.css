@@ -98,3 +98,20 @@ body {
 .bg-dividir {
   background-color: #d1f7e5;
 }
+
+.thumbnail {
+  border: 2px solid transparent;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.thumbnail:hover {
+  transform: scale(1.03);
+}
+
+.thumbnail.selected {
+  border: 3px solid #14532d;
+  background-color: #d1fae5;
+}

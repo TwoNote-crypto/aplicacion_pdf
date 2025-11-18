@@ -1,41 +1,44 @@
-from flask import Flask, render_template, request
-import os
+from flask import Flask, render_template, request, send_file
 from werkzeug.utils import secure_filename
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 from PIL import Image
+from io import BytesIO
 
 app = Flask(__name__)
 
-# Carpeta para guardar resultados
-RESULTADOS_FOLDER = os.path.join("static", "resultados")
-os.makedirs(RESULTADOS_FOLDER, exist_ok=True)
+# ---------------------------------------
+# LIMITE DE ARCHIVOS (por seguridad)
+# 80 MB total por request
+# ---------------------------------------
+app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024  
 
-# -----------------------------
-# Función auxiliar para nombres
-# -----------------------------
-def obtener_nombre(nombre_personalizado, archivos, prefijo="resultado"):
-    """
-    Si el usuario da un nombre, lo usamos.
-    Si no, usamos el nombre del primer archivo subido.
-    """
-    if nombre_personalizado and nombre_personalizado.strip() != "":
-        nombre_final = nombre_personalizado.strip()
+
+# ---------------------------------------
+# Función: nombre final del PDF
+# (solo aseguramos que tenga .pdf)
+# ---------------------------------------
+def obtener_nombre(nombre_usuario, prefijo):
+    if nombre_usuario and nombre_usuario.strip() != "":
+        nombre_final = secure_filename(nombre_usuario.strip())
     else:
-        nombre_final = os.path.splitext(archivos[0].filename)[0] if archivos else prefijo
+        nombre_final = prefijo
+
     if not nombre_final.lower().endswith(".pdf"):
         nombre_final += ".pdf"
-    return secure_filename(nombre_final)
+    return nombre_final
 
-# -----------------------------
-# Rutas principales
-# -----------------------------
+
+# ---------------------------------------
+# Página principal
+# ---------------------------------------
 @app.route("/")
 def index():
     return render_template("index.html")
 
-# -----------------------------
-# Convertir imágenes a PDF
-# -----------------------------
+
+# ---------------------------------------
+# Convertir IMÁGENES a PDF (EN MEMORIA)
+# ---------------------------------------
 @app.route("/convertir", methods=["GET", "POST"])
 def convertir():
     if request.method == "POST":
@@ -43,7 +46,7 @@ def convertir():
         orden = request.form.get("orden", "")
         nombre_pdf = request.form.get("nombre_pdf", "")
 
-        # Reordenar según la lista
+        # Reordenar
         if orden:
             orden_lista = orden.split(",")
             archivos_dict = {f.filename: f for f in archivos}
@@ -51,25 +54,35 @@ def convertir():
 
         imagenes = []
         for archivo in archivos:
-            if archivo and archivo.filename.lower().endswith(("png", "jpg", "jpeg")):
+            if archivo.filename.lower().endswith(("png", "jpg", "jpeg")):
                 img = Image.open(archivo).convert("RGB")
                 imagenes.append(img)
 
         if not imagenes:
             return "No se subieron imágenes válidas", 400
 
-        nombre_final = obtener_nombre(nombre_pdf, archivos, "convertido")
-        ruta_salida = os.path.join(RESULTADOS_FOLDER, nombre_final)
+        # Crear buffer en memoria
+        buffer = BytesIO()
 
-        imagenes[0].save(ruta_salida, save_all=True, append_images=imagenes[1:])
+        # Guardar todas las imágenes en 1 PDF
+        imagenes[0].save(buffer, format="PDF", save_all=True, append_images=imagenes[1:])
+        buffer.seek(0)
 
-        return render_template("resultado.html", archivo=nombre_final)
+        nombre_final = obtener_nombre(nombre_pdf, "convertido.pdf")
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=nombre_final,
+            mimetype="application/pdf"
+        )
 
     return render_template("convertir.html")
 
-# -----------------------------
-# Unir PDFs
-# -----------------------------
+
+# ---------------------------------------
+# UNIR PDFs (EN MEMORIA)
+# ---------------------------------------
 @app.route("/unir", methods=["GET", "POST"])
 def unir():
     if request.method == "POST":
@@ -77,63 +90,68 @@ def unir():
         orden = request.form.get("orden", "")
         nombre_pdf = request.form.get("nombre_pdf", "")
 
-        # Reordenar según la lista
+        # Reordenar
         if orden:
             orden_lista = orden.split(",")
             archivos_dict = {f.filename: f for f in archivos}
             archivos = [archivos_dict[n] for n in orden_lista if n in archivos_dict]
 
-        if not archivos:
-            return "No se subieron PDFs válidos", 400
-
-        nombre_final = obtener_nombre(nombre_pdf, archivos, "unido")
-        ruta_salida = os.path.join(RESULTADOS_FOLDER, nombre_final)
-
         merger = PdfMerger()
+
         for archivo in archivos:
             merger.append(archivo)
-        merger.write(ruta_salida)
-        merger.close()
 
-        return render_template("resultado.html", archivo=nombre_final)
+        buffer = BytesIO()
+        merger.write(buffer)
+        merger.close()
+        buffer.seek(0)
+
+        nombre_final = obtener_nombre(nombre_pdf, "unido.pdf")
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=nombre_final,
+            mimetype="application/pdf"
+        )
 
     return render_template("unir.html")
 
-# -----------------------------
-# Dividir PDF
-# -----------------------------
+
+# ---------------------------------------
+# DIVIDIR PDF (EN MEMORIA)
+# ---------------------------------------
 @app.route("/dividir", methods=["GET", "POST"])
 def dividir():
     if request.method == "POST":
         archivo = request.files.get("archivo")
-        paginas = request.form.get("paginas")
         nombre_pdf = request.form.get("nombre_pdf", "")
+        paginas = request.form.get("paginas_seleccionadas")
 
         if not archivo or not paginas:
-            return "Falta archivo o rango de páginas", 400
+            return "Falta archivo o selección de páginas", 400
 
-        nombre_final = obtener_nombre(nombre_pdf, [archivo], "dividido")
-        ruta_salida = os.path.join(RESULTADOS_FOLDER, nombre_final)
+        paginas = list(map(int, paginas.split(",")))
 
         reader = PdfReader(archivo)
         writer = PdfWriter()
 
-        rangos = []
-        for parte in paginas.split(","):
-            if "-" in parte:
-                inicio, fin = map(int, parte.split("-"))
-                rangos.extend(range(inicio, fin + 1))
-            else:
-                rangos.append(int(parte))
+        for p in paginas:
+            if 1 <= p <= len(reader.pages):
+                writer.add_page(reader.pages[p - 1])
 
-        for num in rangos:
-            if 1 <= num <= len(reader.pages):
-                writer.add_page(reader.pages[num - 1])
+        buffer = BytesIO()
+        writer.write(buffer)
+        buffer.seek(0)
 
-        with open(ruta_salida, "wb") as salida:
-            writer.write(salida)
+        nombre_final = obtener_nombre(nombre_pdf, "dividido.pdf")
 
-        return render_template("resultado.html", archivo=nombre_final)
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=nombre_final,
+            mimetype="application/pdf"
+        )
 
     return render_template("dividir.html")
 
