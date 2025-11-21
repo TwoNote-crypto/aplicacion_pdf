@@ -1,24 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Dividir PDF{% endblock %}
 {% block body_class %}bg-dividir{% endblock %}
-
 {% block content %}
 <div class="card shadow p-5">
-  <h2>Extraer PDF</h2>
+  <h2>Dividir PDF</h2>
 
   <form method="post" enctype="multipart/form-data">
-    <input type="file" id="pdfInput" name="archivo" class="form-control my-3" required>
+    <input type="file" id="pdfInput" name="archivo"
+           class="form-control my-3" accept="application/pdf">
 
-    <!-- Miniaturas -->
-    <div id="previewContainer" class="d-flex flex-wrap gap-3 my-3"></div>
+    <div id="previewContainer" class="d-flex flex-wrap gap-2"></div>
 
-    <!-- Campo oculto donde guardamos las páginas seleccionadas -->
     <input type="hidden" name="paginas_seleccionadas" id="paginasSeleccionadas">
 
-    <!-- Nuevo campo -->
     <input type="text" name="nombre_pdf" placeholder="Nombre del PDF (opcional)" class="form-control my-3">
 
-    <button type="submit" class="btn btn-warning">Extraer</button>
+    <button type="submit" class="btn btn-warning">Dividir</button>
   </form>
 </div>
 {% endblock %}
