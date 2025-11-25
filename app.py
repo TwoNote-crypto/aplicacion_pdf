@@ -1,24 +1,51 @@
 from flask import Flask, render_template, request, send_file, redirect, url_for, flash, jsonify
 from werkzeug.utils import secure_filename
-from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 from PIL import Image
 from io import BytesIO
 import shutil
 import subprocess
 import logging
+import os
+from PyPDF2 import PdfReader, PdfWriter  # solo para dividir
 
 app = Flask(__name__)
 app.secret_key = "cambiala_por_una_segura"
 
 # ---------------------------------------
-# LIMITE DE ARCHIVOS (por seguridad)
-# 80 MB total por request
+# Limite de subida
 # ---------------------------------------
 app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
 
 logging.basicConfig(level=logging.INFO)
 
+# ---------------------------------------
+# Buscar Ghostscript
+# ---------------------------------------
+def find_gs():
+    possibles = ["gs", "gswin64c", "gswin32c", "ghostscript"]
+    for p in possibles:
+        if shutil.which(p):
+            return p
+    return None
 
+GS = find_gs()
+
+# ---------------------------------------
+# Función para ejecutar Ghostscript
+# ---------------------------------------
+def gs_run(input_files, output_file, extra_args):
+    if not GS:
+        raise Exception("Ghostscript NO está instalado en el sistema")
+
+    cmd = [GS, "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite"]
+    cmd += extra_args
+    cmd += ["-sOutputFile=" + output_file] + input_files
+
+    subprocess.run(cmd, check=True)
+
+# ---------------------------------------
+# Generar nombre de archivo
+# ---------------------------------------
 def obtener_nombre(nombre_usuario, prefijo):
     if nombre_usuario and nombre_usuario.strip() != "":
         nombre_final = secure_filename(nombre_usuario.strip())
@@ -27,52 +54,8 @@ def obtener_nombre(nombre_usuario, prefijo):
 
     if not nombre_final.lower().endswith(".pdf"):
         nombre_final += ".pdf"
+
     return nombre_final
-
-
-def limpiar_metadata(pdf_bytes: bytes) -> bytes:
-    """
-    Quita/limpia metadatos como Producer/Creator que pueden traer la marca "Creado por..."
-    """
-    reader = PdfReader(BytesIO(pdf_bytes))
-    writer = PdfWriter()
-    for p in reader.pages:
-        writer.add_page(p)
-    # Sobrescribimos metadata con vacíos para evitar Producer/Creator visibles
-    writer.add_metadata({
-        "/Producer": "",
-        "/Creator": "",
-    })
-    out = BytesIO()
-    writer.write(out)
-    out.seek(0)
-    return out.read()
-
-
-def _find_ghostscript_executable():
-    possibles = ["gs", "gswin64c", "gswin32c", "ghostscript"]
-    for p in possibles:
-        if shutil.which(p):
-            return p
-    return None
-
-
-@app.route("/health")
-def health():
-    """
-    Ruta informativa: comprueba si Ghostscript está presente (no forzamos su uso).
-    """
-    gs = _find_ghostscript_executable()
-    ok = bool(gs)
-    version = None
-    if gs:
-        try:
-            proc = subprocess.run([gs, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-            version = proc.stdout.decode().strip() or proc.stderr.decode().strip()
-        except Exception:
-            version = None
-    return jsonify({"ghostscript_available": ok, "ghostscript_executable": gs, "version": version})
-
 
 # ---------------------------------------
 # Página principal
@@ -81,14 +64,12 @@ def health():
 def index():
     return render_template("index.html")
 
-
 # ---------------------------------------
-# Convertir IMÁGENES a PDF (EN MEMORIA)
+# Convertir imágenes a PDF
 # ---------------------------------------
 @app.route("/convertir", methods=["GET", "POST"])
 def convertir():
     if request.method == "POST":
-        # recibimos archivos con fetch o con form normal; manejar ambos casos
         archivos = request.files.getlist("archivos")
         nombre_pdf = request.form.get("nombre_pdf", "")
 
@@ -98,7 +79,7 @@ def convertir():
                 try:
                     img = Image.open(archivo).convert("RGB")
                     imagenes.append(img)
-                except Exception:
+                except:
                     pass
 
         if not imagenes:
@@ -108,21 +89,17 @@ def convertir():
         buffer = BytesIO()
         imagenes[0].save(buffer, format="PDF", save_all=True, append_images=imagenes[1:])
         buffer.seek(0)
+
         pdf_bytes = buffer.read()
-
-        # limpiar metadata por seguridad
-        pdf_bytes = limpiar_metadata(pdf_bytes)
-
-        nombre_final = obtener_nombre(nombre_pdf, "convertido.pdf")
-        return send_file(BytesIO(pdf_bytes), as_attachment=True, download_name=nombre_final, mimetype="application/pdf")
+        return send_file(BytesIO(pdf_bytes),
+                         as_attachment=True,
+                         download_name=obtener_nombre(nombre_pdf, "convertido.pdf"),
+                         mimetype="application/pdf")
 
     return render_template("convertir.html")
 
-
 # ---------------------------------------
-# UNIR PDFs (EN MEMORIA)
-# Esta ruta acepta una subida por fetch (FormData) o un form tradicional.
-# Espera múltiples entradas 'archivos'
+# UNIR PDFs → Ghostscript
 # ---------------------------------------
 @app.route("/unir", methods=["GET", "POST"])
 def unir():
@@ -134,30 +111,34 @@ def unir():
             flash("No se subieron PDFs")
             return redirect(url_for("unir"))
 
-        merger = PdfMerger()
-        for archivo in archivos:
-            try:
-                merger.append(archivo)
-            except Exception as e:
-                logging.warning("No se pudo anexar %s: %s", getattr(archivo, "filename", ""), e)
+        tmp_inputs = []
+        os.makedirs("/tmp", exist_ok=True)
 
-        buffer = BytesIO()
-        merger.write(buffer)
-        merger.close()
-        buffer.seek(0)
-        pdf_bytes = buffer.read()
+        for idx, f in enumerate(archivos):
+            ruta = f"/tmp/input_{idx}.pdf"
+            f.save(ruta)
+            tmp_inputs.append(ruta)
 
-        pdf_bytes = limpiar_metadata(pdf_bytes)
+        salida = "/tmp/unido.pdf"
 
-        nombre_final = obtener_nombre(nombre_pdf, "unido.pdf")
-        return send_file(BytesIO(pdf_bytes), as_attachment=True, download_name=nombre_final, mimetype="application/pdf")
+        gs_run(tmp_inputs, salida, extra_args=[])
 
-    # GET -> template con la interfaz (la UI manejará el envío vía JS)
+        with open(salida, "rb") as f:
+            pdf_bytes = f.read()
+
+        for r in tmp_inputs:
+            os.remove(r)
+        os.remove(salida)
+
+        return send_file(BytesIO(pdf_bytes),
+                         as_attachment=True,
+                         download_name=obtener_nombre(nombre_pdf, "unido.pdf"),
+                         mimetype="application/pdf")
+
     return render_template("unir.html")
 
-
 # ---------------------------------------
-# DIVIDIR PDF (EN MEMORIA)
+# DIVIDIR → PyPDF2 (NO daña firmas)
 # ---------------------------------------
 @app.route("/dividir", methods=["GET", "POST"])
 def dividir():
@@ -183,13 +164,22 @@ def dividir():
         buffer.seek(0)
         pdf_bytes = buffer.read()
 
-        pdf_bytes = limpiar_metadata(pdf_bytes)
-
-        nombre_final = obtener_nombre(nombre_pdf, "dividido.pdf")
-        return send_file(BytesIO(pdf_bytes), as_attachment=True, download_name=nombre_final, mimetype="application/pdf")
+        return send_file(BytesIO(pdf_bytes),
+                         as_attachment=True,
+                         download_name=obtener_nombre(nombre_pdf, "dividido.pdf"),
+                         mimetype="application/pdf")
 
     return render_template("dividir.html")
 
+# ---------------------------------------
+# Health
+# ---------------------------------------
+@app.route("/health")
+def health():
+    return jsonify({
+        "ghostscript_available": bool(GS),
+        "ghostscript_path": GS
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)

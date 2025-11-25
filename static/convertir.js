@@ -38,9 +38,8 @@ document.addEventListener("DOMContentLoaded", function () {
   new Sortable(lista, {
     animation: 150,
     onEnd: function (evt) {
-      const oldIndex = evt.oldIndex, newIndex = evt.newIndex;
-      const moved = archivosActuales.splice(oldIndex, 1)[0];
-      archivosActuales.splice(newIndex, 0, moved);
+      const moved = archivosActuales.splice(evt.oldIndex, 1)[0];
+      archivosActuales.splice(evt.newIndex, 0, moved);
       renderLista();
     }
   });
@@ -58,13 +57,8 @@ document.addEventListener("DOMContentLoaded", function () {
       method: "POST",
       body: fd
     }).then(async resp => {
-      if (!resp.ok) {
-        const txt = await resp.text();
-        alert("Error: " + txt);
-        return;
-      }
       const blob = await resp.blob();
-      const filename = resp.headers.get("content-disposition")?.split("filename=")[1] || (nombreInput ? nombreInput.value || "convertido.pdf" : "convertido.pdf");
+      const filename = resp.headers.get("content-disposition")?.split("filename=")[1] || "convertido.pdf";
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

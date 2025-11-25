@@ -4,19 +4,18 @@ document.addEventListener("DOMContentLoaded", function () {
   const form = document.getElementById("unirForm");
   const nombreInput = document.getElementById("nombre_pdf");
 
-  let archivosActuales = []; // File objects
+  let archivosActuales = [];
 
   if (!input || !lista || !form) return;
 
   input.addEventListener("change", function () {
     const nuevos = Array.from(input.files);
-    // añadimos sólo los que no estén ya por nombre+size (evita duplicados)
     nuevos.forEach(n => {
       const existe = archivosActuales.some(a => a.name === n.name && a.size === n.size);
       if (!existe) archivosActuales.push(n);
     });
     renderLista();
-    input.value = ""; // permitir volver a seleccionar
+    input.value = "";
   });
 
   function renderLista() {
@@ -36,20 +35,15 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // arrastrar reordena el array
   new Sortable(lista, {
     animation: 150,
     onEnd: function (evt) {
-      const oldIndex = evt.oldIndex, newIndex = evt.newIndex;
-      if (oldIndex === undefined || newIndex === undefined) return;
-      const moved = archivosActuales.splice(oldIndex, 1)[0];
-      archivosActuales.splice(newIndex, 0, moved);
+      const moved = archivosActuales.splice(evt.oldIndex, 1)[0];
+      archivosActuales.splice(evt.newIndex, 0, moved);
       renderLista();
-    },
-    ghostClass: "dragging"
+    }
   });
 
-  // enviar por fetch y descargar el resultado
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     if (archivosActuales.length === 0) {
