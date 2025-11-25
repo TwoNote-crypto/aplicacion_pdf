@@ -1,21 +1,50 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, redirect, url_for, flash, jsonify
 from werkzeug.utils import secure_filename
-from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 from PIL import Image
 from io import BytesIO
+import shutil
+import subprocess
+import logging
+import os
+from PyPDF2 import PdfReader, PdfWriter  # solo para dividir
 
 app = Flask(__name__)
+app.secret_key = "cambiala_por_una_segura"
 
 # ---------------------------------------
-# LIMITE DE ARCHIVOS (por seguridad)
-# 80 MB total por request
+# Limite de subida
 # ---------------------------------------
-app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024  
+app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
 
+logging.basicConfig(level=logging.INFO)
 
 # ---------------------------------------
-# Función: nombre final del PDF
-# (solo aseguramos que tenga .pdf)
+# Buscar Ghostscript
+# ---------------------------------------
+def find_gs():
+    possibles = ["gs", "gswin64c", "gswin32c", "ghostscript"]
+    for p in possibles:
+        if shutil.which(p):
+            return p
+    return None
+
+GS = find_gs()
+
+# ---------------------------------------
+# Función para ejecutar Ghostscript
+# ---------------------------------------
+def gs_run(input_files, output_file, extra_args):
+    if not GS:
+        raise Exception("Ghostscript NO está instalado en el sistema")
+
+    cmd = [GS, "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite"]
+    cmd += extra_args
+    cmd += ["-sOutputFile=" + output_file] + input_files
+
+    subprocess.run(cmd, check=True)
+
+# ---------------------------------------
+# Generar nombre de archivo
 # ---------------------------------------
 def obtener_nombre(nombre_usuario, prefijo):
     if nombre_usuario and nombre_usuario.strip() != "":
@@ -25,8 +54,8 @@ def obtener_nombre(nombre_usuario, prefijo):
 
     if not nombre_final.lower().endswith(".pdf"):
         nombre_final += ".pdf"
-    return nombre_final
 
+    return nombre_final
 
 # ---------------------------------------
 # Página principal
@@ -35,104 +64,94 @@ def obtener_nombre(nombre_usuario, prefijo):
 def index():
     return render_template("index.html")
 
-
 # ---------------------------------------
-# Convertir IMÁGENES a PDF (EN MEMORIA)
+# Convertir imágenes a PDF
 # ---------------------------------------
 @app.route("/convertir", methods=["GET", "POST"])
 def convertir():
     if request.method == "POST":
         archivos = request.files.getlist("archivos")
-        orden = request.form.get("orden", "")
         nombre_pdf = request.form.get("nombre_pdf", "")
-
-        # Reordenar
-        if orden:
-            orden_lista = orden.split(",")
-            archivos_dict = {f.filename: f for f in archivos}
-            archivos = [archivos_dict[n] for n in orden_lista if n in archivos_dict]
 
         imagenes = []
         for archivo in archivos:
-            if archivo.filename.lower().endswith(("png", "jpg", "jpeg")):
-                img = Image.open(archivo).convert("RGB")
-                imagenes.append(img)
+            if archivo and archivo.filename.lower().endswith(("png", "jpg", "jpeg")):
+                try:
+                    img = Image.open(archivo).convert("RGB")
+                    imagenes.append(img)
+                except:
+                    pass
 
         if not imagenes:
-            return "No se subieron imágenes válidas", 400
+            flash("No se subieron imágenes válidas")
+            return redirect(url_for("convertir"))
 
-        # Crear buffer en memoria
         buffer = BytesIO()
-
-        # Guardar todas las imágenes en 1 PDF
         imagenes[0].save(buffer, format="PDF", save_all=True, append_images=imagenes[1:])
         buffer.seek(0)
 
-        nombre_final = obtener_nombre(nombre_pdf, "convertido.pdf")
-
-        return send_file(
-            buffer,
-            as_attachment=True,
-            download_name=nombre_final,
-            mimetype="application/pdf"
-        )
+        pdf_bytes = buffer.read()
+        return send_file(BytesIO(pdf_bytes),
+                         as_attachment=True,
+                         download_name=obtener_nombre(nombre_pdf, "convertido.pdf"),
+                         mimetype="application/pdf")
 
     return render_template("convertir.html")
 
-
 # ---------------------------------------
-# UNIR PDFs (EN MEMORIA)
+# UNIR PDFs → Ghostscript
 # ---------------------------------------
 @app.route("/unir", methods=["GET", "POST"])
 def unir():
     if request.method == "POST":
         archivos = request.files.getlist("archivos")
-        orden = request.form.get("orden", "")
         nombre_pdf = request.form.get("nombre_pdf", "")
 
-        # Reordenar
-        if orden:
-            orden_lista = orden.split(",")
-            archivos_dict = {f.filename: f for f in archivos}
-            archivos = [archivos_dict[n] for n in orden_lista if n in archivos_dict]
+        if not archivos:
+            flash("No se subieron PDFs")
+            return redirect(url_for("unir"))
 
-        merger = PdfMerger()
+        tmp_inputs = []
+        os.makedirs("/tmp", exist_ok=True)
 
-        for archivo in archivos:
-            merger.append(archivo)
+        for idx, f in enumerate(archivos):
+            ruta = f"/tmp/input_{idx}.pdf"
+            f.save(ruta)
+            tmp_inputs.append(ruta)
 
-        buffer = BytesIO()
-        merger.write(buffer)
-        merger.close()
-        buffer.seek(0)
+        salida = "/tmp/unido.pdf"
 
-        nombre_final = obtener_nombre(nombre_pdf, "unido.pdf")
+        gs_run(tmp_inputs, salida, extra_args=[])
 
-        return send_file(
-            buffer,
-            as_attachment=True,
-            download_name=nombre_final,
-            mimetype="application/pdf"
-        )
+        with open(salida, "rb") as f:
+            pdf_bytes = f.read()
+
+        for r in tmp_inputs:
+            os.remove(r)
+        os.remove(salida)
+
+        return send_file(BytesIO(pdf_bytes),
+                         as_attachment=True,
+                         download_name=obtener_nombre(nombre_pdf, "unido.pdf"),
+                         mimetype="application/pdf")
 
     return render_template("unir.html")
 
-
 # ---------------------------------------
-# DIVIDIR PDF (EN MEMORIA)
+# DIVIDIR → PyPDF2 (NO daña firmas)
 # ---------------------------------------
 @app.route("/dividir", methods=["GET", "POST"])
 def dividir():
     if request.method == "POST":
         archivo = request.files.get("archivo")
         nombre_pdf = request.form.get("nombre_pdf", "")
-        paginas = request.form.get("paginas_seleccionadas")
+        paginas = request.form.get("paginas_seleccionadas", "")
 
         if not archivo or not paginas:
-            return "Falta archivo o selección de páginas", 400
+            flash("Falta archivo o selección de páginas")
+            return redirect(url_for("dividir"))
 
-        paginas = list(map(int, paginas.split(",")))
-
+        paginas = list(map(int, filter(None, paginas.split(","))))
         reader = PdfReader(archivo)
         writer = PdfWriter()
 
@@ -143,18 +162,24 @@ def dividir():
         buffer = BytesIO()
         writer.write(buffer)
         buffer.seek(0)
+        pdf_bytes = buffer.read()
 
-        nombre_final = obtener_nombre(nombre_pdf, "dividido.pdf")
-
-        return send_file(
-            buffer,
-            as_attachment=True,
-            download_name=nombre_final,
-            mimetype="application/pdf"
-        )
+        return send_file(BytesIO(pdf_bytes),
+                         as_attachment=True,
+                         download_name=obtener_nombre(nombre_pdf, "dividido.pdf"),
+                         mimetype="application/pdf")
 
     return render_template("dividir.html")
 
+# ---------------------------------------
+# Health
+# ---------------------------------------
+@app.route("/health")
+def health():
+    return jsonify({
+        "ghostscript_available": bool(GS),
+        "ghostscript_path": GS
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)

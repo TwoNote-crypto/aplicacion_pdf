@@ -4,13 +4,15 @@
 {% block content %}
 <div class="card shadow p-5">
   <h2>Unir PDF</h2>
-  <form method="post" enctype="multipart/form-data">
-    <input type="file" id="fileInput" name="archivos" class="form-control my-3" multiple required>
+
+  <form id="unirForm" method="post" enctype="multipart/form-data">
+    <input type="file" id="fileInputUnir" class="form-control my-3" accept="application/pdf" multiple>
+
     <ul id="listaArchivos" class="list-group my-3"></ul>
     <input type="hidden" name="orden" id="orden">
 
-    <!-- Nuevo campo -->
-    <input type="text" name="nombre_pdf" placeholder="Nombre del PDF (opcional)" class="form-control my-3">
+    <input type="text" name="nombre_pdf" id="nombre_pdf"
+           placeholder="Nombre del PDF (opcional)" class="form-control my-3">
 
     <button type="submit" class="btn btn-success">Unir</button>
   </form>
