@@ -36,15 +36,21 @@ body {
   margin: 0;
 }
 
+/* FIX: evitar que los items se vuelvan invisibles */
+#listaArchivos li {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+}
+
 .draggable {
   cursor: grab;
-  background-color: #d1fae5;  /* verde claro de fondo */
-  border: 1px solid #14532d;   /* verde oscuro del borde */
+  background-color: #d1fae5;  /* Verde claro */
+  border: 1px solid #14532d;   /* Verde oscuro */
   border-radius: 6px;
   margin-bottom: 8px;
   padding: 10px 15px;
   font-weight: 500;
-  color: #14532d;               /* texto verde oscuro */
+  color: #14532d;               /* Texto verde */
   transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease, opacity 0.4s ease;
   opacity: 0;
   transform: translateY(-10px);
@@ -52,14 +58,14 @@ body {
 
 /* Fade-in al cargar */
 .draggable.show {
-  opacity: 1;
-  transform: translateY(0);
+  opacity: 1 !important;
+  transform: translateY(0) !important;
 }
 
 /* Al arrastrar */
 .draggable.dragging {
   opacity: 0.7;
-  background-color: #a7f3d0;   /* verde más intenso al arrastrar */
+  background-color: #a7f3d0;
   box-shadow: 0 4px 15px rgba(0,0,0,0.2);
   transform: scale(1.05);
   z-index: 1000;
@@ -74,6 +80,36 @@ body {
   0% { transform: scale(1.05); }
   50% { transform: scale(0.98); }
   100% { transform: scale(1); }
+}
+
+/* Numeración visible en los elementos ordenables */
+.lista-num > li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Números automáticos */
+.lista-num {
+  counter-reset: item;
+}
+
+.lista-num li::before {
+  content: counter(item) ". ";
+  counter-increment: item;
+  font-weight: bold;
+  margin-right: 6px;
+}
+
+/* Badge opcional si lo quieres activar */
+.badge-num {
+  background-color: #14532d;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-weight: bold;
+  min-width: 35px;
+  text-align: center;
 }
 
 /* ----------------------- */
@@ -95,33 +131,54 @@ body {
 /* ----------------------- */
 /* FONDOS POR SECCIÓN       */
 /* ----------------------- */
-.bg-convertir {
-  background-color: #f0fff4;
-}
+.bg-convertir { background-color: #f0fff4; }
+.bg-unir { background-color: #e6f4ea; }
+.bg-dividir { background-color: #d1f7e5; }
 
-.bg-unir {
-  background-color: #e6f4ea;
-}
+/* ------------------------------ */
+/* MINIATURAS DEL MODO DIVIDIR   */
+/* ------------------------------ */
 
-.bg-dividir {
-  background-color: #d1f7e5;
+#previewContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-start;
 }
 
 .thumbnail {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  width: 160px;
+  height: 210px;
+  background: #ffffff;
   border: 2px solid transparent;
+
+  border-radius: 8px;
   padding: 4px;
-  border-radius: 6px;
   cursor: pointer;
-  transition: 0.2s;
+  transition: all 0.2s ease;
+
+  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+  overflow: hidden;
 }
 
 .thumbnail:hover {
-  transform: scale(1.03);
+  transform: scale(1.04);
 }
 
 .thumbnail.selected {
   border: 3px solid #14532d;
   background-color: #d1fae5;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+}
+
+.thumbnail canvas {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
 }
 
 /* icono eliminar */
