@@ -1,7 +1,10 @@
+// static/dividir.js
 document.addEventListener("DOMContentLoaded", () => {
     const inputPDF = document.getElementById("pdfInput");
     const previewContainer = document.getElementById("previewContainer");
     const paginasSeleccionadas = document.getElementById("paginasSeleccionadas");
+
+    let ordenSeleccion = [];
 
     if (!inputPDF) return;
 
@@ -11,6 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inputPDF.addEventListener("change", async function () {
         previewContainer.innerHTML = "";
         paginasSeleccionadas.value = "";
+        ordenSeleccion = [];
 
         const archivo = inputPDF.files[0];
         if (!archivo) return;
@@ -23,7 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             for (let num = 1; num <= pdf.numPages; num++) {
                 const page = await pdf.getPage(num);
-                const viewport = page.getViewport({ scale: 0.4 });
+                const viewport = page.getViewport({ scale: 0.35 });
 
                 const canvas = document.createElement("canvas");
                 const context = canvas.getContext("2d");
@@ -38,11 +42,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 thumb.dataset.page = num;
                 thumb.appendChild(canvas);
 
+                // CLICK que respeta el ORDEN REAL
                 thumb.addEventListener("click", () => {
-                    thumb.classList.toggle("selected");
-                    const seleccionadas = Array.from(document.querySelectorAll(".thumbnail.selected"))
-                        .map(t => t.dataset.page);
-                    paginasSeleccionadas.value = seleccionadas.join(",");
+                    if (thumb.classList.contains("selected")) {
+                        thumb.classList.remove("selected");
+                        ordenSeleccion = ordenSeleccion.filter(p => p !== num);
+                    } else {
+                        thumb.classList.add("selected");
+                        ordenSeleccion.push(num);
+                    }
+
+                    paginasSeleccionadas.value = ordenSeleccion.join(",");
                 });
 
                 previewContainer.appendChild(thumb);

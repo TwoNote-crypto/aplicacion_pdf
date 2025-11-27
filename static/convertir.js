@@ -1,18 +1,21 @@
+// static/convertir.js
 document.addEventListener("DOMContentLoaded", function () {
   const input = document.getElementById("fileInput");
   const lista = document.getElementById("listaArchivos");
-  const form = document.getElementById("convertirForm");
-  const nombreInput = form ? form.querySelector("input[name='nombre_pdf']") : null;
+  const btn = document.getElementById("btnConvertir");
+  const nombreInput = document.querySelector("input[name='nombre_pdf']");
 
-  if (!input || !lista || !form) return;
+  let archivosActuales = []; // [{id, file}]
 
-  let archivosActuales = [];
+  if (!input || !lista || !btn) return;
 
   input.addEventListener("change", function () {
     const nuevos = Array.from(input.files);
     nuevos.forEach(n => {
-      const existe = archivosActuales.some(a => a.name === n.name && a.size === n.size);
-      if (!existe) archivosActuales.push(n);
+      archivosActuales.push({
+        id: crypto.randomUUID(),
+        file: n
+      });
     });
     renderLista();
     input.value = "";
@@ -20,56 +23,78 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function renderLista() {
     lista.innerHTML = "";
-    archivosActuales.forEach((f, idx) => {
+
+    archivosActuales.forEach(obj => {
       const li = document.createElement("li");
-      li.className = "draggable list-group-item d-flex justify-content-between align-items-center";
-      li.dataset.idx = idx;
-      li.innerHTML = `<span>${f.name}</span>
-                      <button class="btn btn-danger btn-sm eliminar"><i class="bi bi-trash"></i></button>`;
+      li.className =
+  "list-group-item d-flex justify-content-between align-items-center draggable show";
+      li.dataset.id = obj.id;
+
+      li.innerHTML = `
+        <span>${obj.file.name}</span>
+        <button class="btn btn-danger btn-sm eliminar"><i class="bi bi-trash"></i></button>
+      `;
+
       li.querySelector(".eliminar").addEventListener("click", () => {
-        archivosActuales.splice(idx, 1);
+        archivosActuales = archivosActuales.filter(x => x.id !== obj.id);
         renderLista();
+        activarSortable();
       });
+
       lista.appendChild(li);
-      setTimeout(() => li.classList.add("show"), 50 + idx * 50);
     });
   }
 
-  new Sortable(lista, {
-    animation: 150,
-    onEnd: function (evt) {
-      const moved = archivosActuales.splice(evt.oldIndex, 1)[0];
-      archivosActuales.splice(evt.newIndex, 0, moved);
-      renderLista();
+  function activarSortable() {
+    if (lista._sortable) {
+      try { lista._sortable.destroy(); } catch(e){/*ignore*/ }
+      lista._sortable = null;
     }
-  });
 
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
+    lista._sortable = new Sortable(lista, {
+      animation: 150,
+      ghostClass: "dragging",
+      onEnd() {
+        const nuevo = [];
+        lista.querySelectorAll("li").forEach(li => {
+          const id = li.dataset.id;
+          const obj = archivosActuales.find(a => a.id === id);
+          if (obj) nuevo.push(obj);
+        });
+        archivosActuales = nuevo;
+      }
+    });
+  }
+
+  activarSortable();
+
+  btn.addEventListener("click", function () {
     if (archivosActuales.length === 0) {
       alert("Añade al menos una imagen.");
       return;
     }
+
     const fd = new FormData();
-    archivosActuales.forEach(f => fd.append("archivos", f, f.name));
-    fd.append("nombre_pdf", nombreInput ? nombreInput.value : "");
-    fetch(form.action || window.location.pathname, {
+    archivosActuales.forEach((obj, idx) => {
+      fd.append("archivos", obj.file);
+      fd.append("orden[]", idx); // enviamos orden explícito
+    });
+    fd.append("nombre_pdf", nombreInput.value);
+
+    fetch("/convertir", {
       method: "POST",
       body: fd
-    }).then(async resp => {
+    })
+    .then(async resp => {
       const blob = await resp.blob();
-      const filename = resp.headers.get("content-disposition")?.split("filename=")[1] || "convertido.pdf";
-      const url = window.URL.createObjectURL(blob);
+      const filename =
+        resp.headers.get("content-disposition")?.split("filename=")[1] ||
+        "convertido.pdf";
+
       const a = document.createElement("a");
-      a.href = url;
+      a.href = URL.createObjectURL(blob);
       a.download = filename.replace(/["']/g, "");
-      document.body.appendChild(a);
       a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    }).catch(err => {
-      console.error(err);
-      alert("Ocurrió un error al convertir las imágenes.");
     });
   });
 });

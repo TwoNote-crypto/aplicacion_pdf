@@ -5,16 +5,18 @@
 <div class="card shadow p-5">
   <h2>Unir PDF</h2>
 
-  <form id="unirForm" method="post" enctype="multipart/form-data">
-    <input type="file" id="fileInputUnir" class="form-control my-3" accept="application/pdf" multiple>
+  <form id="unirForm" method="post" enctype="multipart/form-data" onsubmit="return false;">
+    <input type="file" id="fileInputUnir" class="form-control my-3"
+           accept="application/pdf" multiple>
 
-    <ul id="listaArchivos" class="list-group my-3"></ul>
-    <input type="hidden" name="orden" id="orden">
+    <!-- LISTA ORDENABLE -->
+    <ul id="listaArchivos" class="list-group my-3 lista-num"></ul>
 
     <input type="text" name="nombre_pdf" id="nombre_pdf"
-           placeholder="Nombre del PDF (opcional)" class="form-control my-3">
+           placeholder="Nombre del PDF (opcional)"
+           class="form-control my-3">
 
-    <button type="submit" class="btn btn-success">Unir</button>
+    <button type="button" id="btnUnir" class="btn btn-success">Unir</button>
   </form>
 </div>
 {% endblock %}
