@@ -131,15 +131,6 @@ body {
 /* ----------------------- */
 /* FONDOS POR SECCIÓN       */
 /* ----------------------- */
-<<<<<<< HEAD
-.bg-convertir {
-  background-color: #d1f7e5;
-}
-
-.bg-unir {
-  background-color: #d1f7e5;
-}
-=======
 .bg-convertir { background-color: #f0fff4; }
 .bg-unir { background-color: #e6f4ea; }
 .bg-dividir { background-color: #d1f7e5; }
@@ -147,7 +138,6 @@ body {
 /* ------------------------------ */
 /* MINIATURAS DEL MODO DIVIDIR   */
 /* ------------------------------ */
->>>>>>> experimento
 
 #previewContainer {
   display: flex;
@@ -195,3 +185,16 @@ body {
 .btn .bi {
   vertical-align: -.125em;
 }
+
+#logo {
+  transition: transform 0.25s ease;
+}
+
+#logo:hover {
+  transform: scale(1.03);
+}
+
+#logo:active {
+  transform: scale(0.95);
+}
+  
